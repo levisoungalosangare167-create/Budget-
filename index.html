@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#2e7d32">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon.svg">
+<title>Budget Agricole</title>
+<style>
+:root{--bg:#f4f7f2;--card:#fff;--tx:#1d2b1f;--mut:#6b7a6d;--ok:#2e7d32;--bad:#c62828;--gr:#cfd8cc;--bd:#e0e7dd}
+@media(prefers-color-scheme:dark){:root{--bg:#121812;--card:#1c261d;--tx:#e8efe8;--mut:#93a395;--ok:#66bb6a;--bad:#ef5350;--gr:#3a4a3c;--bd:#2c3a2e}}
+*{box-sizing:border-box}
+body{margin:0;font-family:system-ui,sans-serif;background:var(--bg);color:var(--tx);padding-bottom:70px}
+header{background:var(--ok);color:#fff;padding:14px 16px;font-weight:700;font-size:18px}
+main{padding:12px;max-width:640px;margin:auto}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:12px;margin-bottom:12px}
+h3{margin:0 0 8px;font-size:15px}
+.big{font-size:26px;font-weight:700}
+.mut{color:var(--mut);font-size:13px}
+.ok{color:var(--ok)}.bad{color:var(--bad)}
+input,select,button{font:inherit;padding:10px;border-radius:8px;border:1px solid var(--bd);background:var(--card);color:var(--tx);width:100%;margin-bottom:8px}
+button{background:var(--ok);color:#fff;border:0;font-weight:600}
+button.sec{background:var(--gr);color:var(--tx)}
+button.sm{width:auto;padding:4px 10px;margin:0;font-size:13px}
+nav{position:fixed;bottom:0;left:0;right:0;display:flex;background:var(--card);border-top:1px solid var(--bd)}
+nav button{flex:1;border-radius:0;background:none;color:var(--mut);margin:0;padding:14px 4px;font-size:13px}
+nav button.on{color:var(--ok);border-top:3px solid var(--ok)}
+.row{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--bd)}
+.row:last-child{border:0}
+.bars{margin:6px 0 2px}
+.b{height:10px;border-radius:5px;margin:2px 0}
+.hide{display:none}
+@media print{header,nav,.np{display:none}body{background:#fff;color:#000}.card{border:0}}
+</style>
+</head>
+<body>
+<header>🌾 Budget Agricole</header>
+<main>
+<section id="v-res"></section>
+<section id="v-bud" class="hide">
+ <div class="card np"><h3>Nouveau poste (charge / investissement)</h3>
+  <input id="pn" placeholder="Nom (ex : Semences, Engrais, Motopompe)">
+  <select id="pt"><option>Charge</option><option>Investissement</option></select>
+  <input id="pm" type="number" inputmode="numeric" placeholder="Montant prévu (FCFA)">
+  <button onclick="addPoste()">Ajouter au budget</button></div>
+ <div class="card"><h3>Postes budgétés</h3><div id="lp"></div></div>
+</section>
+<section id="v-dep" class="hide">
+ <div class="card"><h3>Déclarer un paiement</h3>
+  <select id="dp"></select>
+  <input id="dm" type="number" inputmode="numeric" placeholder="Montant payé (FCFA)">
+  <input id="dn" placeholder="Matériel / charge (ex : 20 sacs NPK)">
+  <input id="dd" type="date">
+  <button onclick="addDep()">Enregistrer le paiement</button></div>
+ <div class="card"><h3>Historique</h3><div id="ld"></div></div>
+</section>
+<section id="v-rap" class="hide">
+ <div class="card np"><button onclick="window.print()">🖨️ Imprimer / Enregistrer en PDF</button>
+  <button class="sec" onclick="copyRap()">📋 Copier le rapport</button></div>
+ <div class="card" id="rap"></div>
+ <div class="card np"><h3>Sauvegarde</h3>
+  <button class="sec" onclick="exp()">⬇️ Exporter les données</button>
+  <input type="file" id="imp" accept=".json" onchange="imp(event)">
+  <button class="sec" onclick="if(confirm('Tout effacer ?')){S={postes:[],depenses:[]};save()}">🗑️ Tout effacer</button></div>
+</section>
+</main>
+<nav>
+<button data-v="res" class="on">📊 Résumé</button>
+<button data-v="bud">📝 Budget</button>
+<button data-v="dep">💸 Paiements</button>
+<button data-v="rap">📄 Rapport</button>
+</nav>
+<script>
+const K='budgetAgricole';
+let S;try{S=JSON.parse(localStorage.getItem(K))}catch(e){}
+S=S||{postes:[],depenses:[]};
+const $=i=>document.getElementById(i);
+const f=n=>Math.round(n).toLocaleString('fr-FR')+' FCFA';
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,5);
+function save(){try{localStorage.setItem(K,JSON.stringify(S))}catch(e){}render()}
+const spent=id=>S.depenses.filter(d=>d.poste===id).reduce((a,d)=>a+d.montant,0);
+
+document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{
+ document.querySelectorAll('nav button').forEach(x=>x.classList.toggle('on',x===b));
+ ['res','bud','dep','rap'].forEach(v=>$('v-'+v).classList.toggle('hide',v!==b.dataset.v));
+ render();
+});
+$('dd').valueAsDate=new Date();
+
+function addPoste(){
+ const n=$('pn').value.trim(),m=+$('pm').value;
+ if(!n||!(m>0))return alert('Nom et montant requis');
+ S.postes.push({id:uid(),nom:n,type:$('pt').value,prevu:m});
+ $('pn').value='';$('pm').value='';save();
+}
+function editPoste(id){
+ const p=S.postes.find(x=>x.id===id),v=prompt('Nouveau montant prévu pour '+p.nom,p.prevu);
+ if(v&&+v>0){p.prevu=+v;save()}
+}
+function delPoste(id){
+ if(!confirm('Supprimer ce poste et ses paiements ?'))return;
+ S.postes=S.postes.filter(p=>p.id!==id);S.depenses=S.depenses.filter(d=>d.poste!==id);save();
+}
+function addDep(){
+ const m=+$('dm').value,p=$('dp').value;
+ if(!p)return alert("Créez d'abord un poste dans Budget");
+ if(!(m>0))return alert('Montant requis');
+ S.depenses.push({id:uid(),poste:p,montant:m,note:$('dn').value.trim(),date:$('dd').value});
+ $('dm').value='';$('dn').value='';save();
+}
+function delDep(id){if(confirm('Supprimer ce paiement ?')){S.depenses=S.depenses.filter(d=>d.id!==id);save()}}
+
+function render(){
+ const tp=S.postes.reduce((a,p)=>a+p.prevu,0),td=S.depenses.reduce((a,d)=>a+d.montant,0),caisse=tp-td;
+ const mx=Math.max(1,...S.postes.map(p=>Math.max(p.prevu,spent(p.id))));
+ let h=`<div class="card"><div class="mut">Caisse restante (prévu − payé)</div>
+ <div class="big ${caisse<0?'bad':'ok'}">${f(caisse)}</div>
+ <div class="mut">Prévu : ${f(tp)} · Payé : ${f(td)}</div></div>
+ <div class="card"><h3>Prévu vs payé par poste</h3>`;
+ if(!S.postes.length)h+='<div class="mut">Ajoutez des postes dans l\'onglet Budget.</div>';
+ S.postes.forEach(p=>{
+  const s=spent(p.id);
+  h+=`<div class="bars"><b>${esc(p.nom)}</b>
+  <div class="b" style="width:${p.prevu/mx*100}%;background:var(--gr)"></div>
+  <div class="b" style="width:${s/mx*100}%;background:${s>p.prevu?'var(--bad)':'var(--ok)'}"></div>
+  <div class="mut">Prévu ${f(p.prevu)} · Payé ${f(s)}</div></div>`;
+ });
+ h+=`<div class="mut">▬ gris : prévu · ▬ vert : payé · ▬ rouge : dépassé</div></div>
+ <div class="card"><h3>Surplus / dépassement par poste</h3>`;
+ S.postes.forEach(p=>{
+  const d=p.prevu-spent(p.id);
+  h+=`<div class="row"><span>${esc(p.nom)}</span><b class="${d<0?'bad':'ok'}">${d<0?'Dépassé de '+f(-d):'Surplus '+f(d)}</b></div>`;
+ });
+ $('v-res').innerHTML=h+'</div>';
+
+ $('lp').innerHTML=S.postes.map(p=>`<div class="row"><div><b>${esc(p.nom)}</b><div class="mut">${p.type} · ${f(p.prevu)}</div></div>
+ <div><button class="sm sec" onclick="editPoste('${p.id}')">✏️</button> <button class="sm sec" onclick="delPoste('${p.id}')">🗑️</button></div></div>`).join('')||'<div class="mut">Aucun poste.</div>';
+
+ const cur=$('dp').value;
+ $('dp').innerHTML=S.postes.map(p=>`<option value="${p.id}">${esc(p.nom)}</option>`).join('');
+ if(cur)$('dp').value=cur;
+ $('ld').innerHTML=[...S.depenses].reverse().map(d=>{
+  const p=S.postes.find(x=>x.id===d.poste);
+  return `<div class="row"><div><b>${f(d.montant)}</b> · ${esc(p?p.nom:'?')}<div class="mut">${esc(d.note)} ${d.date||''}</div></div>
+  <button class="sm sec" onclick="delDep('${d.id}')">🗑️</button></div>`}).join('')||'<div class="mut">Aucun paiement.</div>';
+
+ let r=`<h3>Rapport des dépenses effectuées</h3><div class="mut">Établi le ${new Date().toLocaleDateString('fr-FR')}</div>`;
+ S.postes.forEach(p=>{
+  const l=S.depenses.filter(d=>d.poste===p.id);if(!l.length)return;
+  r+=`<div class="row"><b>${esc(p.nom)}</b><b>${f(spent(p.id))}</b></div>`;
+  l.forEach(d=>r+=`<div class="row mut"><span>${esc(d.note||'—')} ${d.date||''}</span><span>${f(d.montant)}</span></div>`);
+ });
+ r+=`<div class="row"><b>TOTAL PAYÉ</b><b>${f(td)}</b></div>`;
+ $('rap').innerHTML=r;
+}
+function copyRap(){
+ let t='RAPPORT DES DÉPENSES\n';
+ S.postes.forEach(p=>{const l=S.depenses.filter(d=>d.poste===p.id);if(!l.length)return;
+  t+=`\n${p.nom} : ${f(spent(p.id))}\n`;l.forEach(d=>t+=`  - ${d.note||'—'} ${d.date||''} : ${f(d.montant)}\n`)});
+ t+=`\nTOTAL PAYÉ : ${f(S.depenses.reduce((a,d)=>a+d.montant,0))}`;
+ navigator.clipboard.writeText(t).then(()=>alert('Rapport copié'));
+}
+function exp(){
+ const a=document.createElement('a');
+ a.href=URL.createObjectURL(new Blob([JSON.stringify(S)],{type:'application/json'}));
+ a.download='budget-agricole.json';a.click();
+}
+function imp(e){
+ const r=new FileReader();
+ r.onload=()=>{try{const d=JSON.parse(r.result);if(d.postes&&d.depenses){S=d;save()}else alert('Fichier invalide')}catch(x){alert('Fichier invalide')}};
+ r.readAsText(e.target.files[0]);
+}
+render();
+if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js');
+</script>
+</body>
+</html>
